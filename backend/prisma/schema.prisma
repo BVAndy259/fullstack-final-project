@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model categories {
+  id          Int        @id @default(autoincrement())
+  name        String     @unique @db.VarChar(100)
+  description String?
+  active      Boolean    @default(true)
+  created_at  DateTime   @default(now()) @db.Timestamp(6)
+  products    products[]
+}
+
+model customers {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(150)
+  dni        String?  @unique @db.VarChar(20)
+  phone      String?  @db.VarChar(20)
+  email      String?  @db.VarChar(150)
+  created_at DateTime @default(now()) @db.Timestamp(6)
+  updated_at DateTime @default(now()) @db.Timestamp(6)
+  sales      sales[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model inventory_movements {
+  id            Int      @id @default(autoincrement())
+  product_id    Int
+  user_id       Int
+  type          String   @db.VarChar(20)
+  quantity      Int
+  stock_before  Int
+  stock_after   Int
+  reason        String?
+  sale_id       Int?
+  movement_date DateTime @default(now()) @db.Timestamp(6)
+  products      products @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sales         sales?   @relation(fields: [sale_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users         users    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([movement_date], map: "idx_inv_mov_date")
+  @@index([product_id], map: "idx_inv_mov_product")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model products {
+  id                  Int                   @id @default(autoincrement())
+  name                String                @db.VarChar(150)
+  description         String?
+  category_id         Int
+  purchase_price      Decimal               @db.Decimal(10, 2)
+  sale_price          Decimal               @db.Decimal(10, 2)
+  current_stock       Int                   @default(0)
+  min_stock           Int                   @default(10)
+  unit_of_measure     String                @default("unidad") @db.VarChar(30)
+  expiry_date         DateTime?             @db.Date
+  barcode             String?               @unique @db.VarChar(50)
+  active              Boolean               @default(true)
+  created_at          DateTime              @default(now()) @db.Timestamp(6)
+  updated_at          DateTime              @default(now()) @db.Timestamp(6)
+  inventory_movements inventory_movements[]
+  categories          categories            @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sale_details        sale_details[]
+
+  @@index([category_id], map: "idx_products_category")
+  @@index([current_stock, min_stock], map: "idx_products_low_stock")
+  @@index([name], map: "idx_products_name")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model sale_details {
+  id         Int      @id @default(autoincrement())
+  sale_id    Int
+  product_id Int
+  quantity   Int
+  unit_price Decimal  @db.Decimal(10, 2)
+  subtotal   Decimal  @db.Decimal(10, 2)
+  products   products @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sales      sales    @relation(fields: [sale_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([product_id], map: "idx_sale_details_product")
+  @@index([sale_id], map: "idx_sale_details_sale")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model sales {
+  id                  Int                   @id @default(autoincrement())
+  user_id             Int
+  customer_id         Int                   @default(1)
+  sale_date           DateTime              @default(now()) @db.Timestamp(6)
+  total               Decimal               @db.Decimal(10, 2)
+  status              String                @default("completada") @db.VarChar(20)
+  observation         String?
+  created_at          DateTime              @default(now()) @db.Timestamp(6)
+  inventory_movements inventory_movements[]
+  sale_details        sale_details[]
+  customers           customers             @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users               users                 @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([customer_id], map: "idx_sales_customer")
+  @@index([sale_date], map: "idx_sales_date")
+  @@index([user_id], map: "idx_sales_user")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model users {
+  id                  Int                   @id @default(autoincrement())
+  name                String                @db.VarChar(100)
+  email               String                @unique @db.VarChar(150)
+  password_hash       String                @db.VarChar(255)
+  role                String                @default("vendedor") @db.VarChar(20)
+  active              Boolean               @default(true)
+  created_at          DateTime              @default(now()) @db.Timestamp(6)
+  updated_at          DateTime              @default(now()) @db.Timestamp(6)
+  inventory_movements inventory_movements[]
+  sales               sales[]
+}
