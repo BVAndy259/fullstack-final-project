@@ -95,6 +95,13 @@ Frontend: `http://localhost:5173`
 
 El frontend consume `http://localhost:3000/api` (configurado en `frontend/src/api/axios.js`).
 
+### 4.1 Credenciales de administrador (por defecto)
+
+Si cargas la base de datos con `data_modeling/script.sql`, puedes iniciar sesión con:
+
+- Email: `admin@novasalud.com`
+- Contraseña: `password`
+
 ## 5. Ejecutar ambos
 
 1. Terminal 1:
@@ -108,4 +115,3 @@ npm run dev
 cd frontend
 npm run dev
 ```
-
