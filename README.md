@@ -102,6 +102,8 @@ Si cargas la base de datos con `data_modeling/script.sql`, puedes iniciar sesió
 - Email: `admin@novasalud.com`
 - Contraseña: `password`
 
+> ⚠️ Estas credenciales son solo para entorno local/desarrollo. Cámbialas antes de usar la aplicación en producción.
+
 ## 5. Ejecutar ambos
 
 1. Terminal 1:
