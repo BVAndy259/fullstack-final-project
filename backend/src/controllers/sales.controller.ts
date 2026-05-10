@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
-import { Prisma } from '../generated/prisma/browser';
+import { consumeProductBatchesFEFO, syncProductSnapshotFromBatches } from '../services/product-batches.service';
 
 // POST /api/sales
 export const registerSale = async (req: Request, res: Response): Promise<void> => {
@@ -12,9 +12,9 @@ export const registerSale = async (req: Request, res: Response): Promise<void> =
   }
 
   try {
-    const sale = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const sale = await prisma.$transaction(async (tx: any) => {
       let total = 0;
-      const details = [];
+      const details: any[] = [];
 
       // 1. Verificar stock y calcular total
       for (const item of items) {
@@ -31,10 +31,7 @@ export const registerSale = async (req: Request, res: Response): Promise<void> =
             `Stock insuficiente para "${product.name}". Disponible: ${product.current_stock}`
           );
         }
-
-        const subtotal = Number(product.sale_price) * item.quantity;
-        total += subtotal;
-        details.push({ product, quantity: item.quantity, subtotal });
+        details.push({ product, quantity: Number(item.quantity) });
       }
 
       // 2. Crear cabecera de la venta
@@ -49,24 +46,38 @@ export const registerSale = async (req: Request, res: Response): Promise<void> =
 
       // 3. Crear detalle y actualizar stock por cada producto
       for (const detail of details) {
-        await tx.sale_details.create({
-          data: {
-            sale_id: newSale.id,
-            product_id: detail.product.id,
-            quantity: detail.quantity,
-            unit_price: detail.product.sale_price,
-            subtotal: detail.subtotal,
-          },
-        });
-
         const stockBefore = detail.product.current_stock;
-        const stockAfter = stockBefore - detail.quantity;
+        const batchConsumptions = await consumeProductBatchesFEFO(tx, detail.product.id, detail.quantity);
+        const soldQty = batchConsumptions.reduce((acc, c) => acc + c.quantity, 0);
+        const subtotal = batchConsumptions.reduce((acc, c) => acc + c.subtotal, 0);
+        total += subtotal;
 
-        // Descontar stock
-        await tx.products.update({
-          where: { id: detail.product.id },
-          data: { current_stock: stockAfter },
-        });
+        for (const c of batchConsumptions) {
+          await tx.sale_details.create({
+            data: {
+              sale_id: newSale.id,
+              product_id: detail.product.id,
+              quantity: c.quantity,
+              unit_price: c.unitPrice,
+              subtotal: c.subtotal,
+            },
+          });
+
+          await tx.sale_batch_items.create({
+            data: {
+              sale_id: newSale.id,
+              product_id: detail.product.id,
+              batch_id: c.batchId,
+              quantity: c.quantity,
+              unit_price: c.unitPrice,
+              subtotal: c.subtotal,
+            },
+          });
+        }
+
+        await syncProductSnapshotFromBatches(tx, detail.product.id);
+        const refreshedProduct = await tx.products.findUnique({ where: { id: detail.product.id } });
+        const stockAfter = refreshedProduct?.current_stock ?? stockBefore - soldQty;
 
         // Registrar movimiento de inventario
         await tx.inventory_movements.create({
@@ -74,7 +85,7 @@ export const registerSale = async (req: Request, res: Response): Promise<void> =
             product_id: detail.product.id,
             user_id: req.user!.id,
             type: 'salida',
-            quantity: -detail.quantity,
+            quantity: -soldQty,
             stock_before: stockBefore,
             stock_after: stockAfter,
             reason: `Venta #${newSale.id}`,
@@ -82,6 +93,11 @@ export const registerSale = async (req: Request, res: Response): Promise<void> =
           },
         });
       }
+
+      await tx.sales.update({
+        where: { id: newSale.id },
+        data: { total },
+      });
 
       return newSale;
     });
@@ -159,36 +175,47 @@ export const cancelSale = async (req: Request, res: Response): Promise<void> => 
   const { reason } = req.body;
 
   try {
-    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    await prisma.$transaction(async (tx: any) => {
       const sale = await tx.sales.findUnique({
         where: { id: Number(req.params.id) },
-        include: { sale_details: true },
+        include: { sale_details: true, sale_batch_items: true },
       });
 
       if (!sale) throw new Error('Venta no encontrada.');
       if (sale.status === 'anulada') throw new Error('La venta ya está anulada.');
 
-      // Revertir stock de cada producto
-      for (const detail of sale.sale_details) {
-        const product = await tx.products.findUnique({
-          where: { id: detail.product_id },
+      const qtyByProduct = new Map<number, number>();
+      for (const row of sale.sale_batch_items) {
+        const current = qtyByProduct.get(row.product_id) ?? 0;
+        qtyByProduct.set(row.product_id, current + Number(row.quantity));
+
+        const batch = await tx.product_batches.findUnique({ where: { id: row.batch_id } });
+        if (!batch) continue;
+
+        await tx.product_batches.update({
+          where: { id: row.batch_id },
+          data: {
+            quantity_available: Number(batch.quantity_available) + Number(row.quantity),
+            active: true,
+          },
         });
+      }
+
+      for (const [productId, qty] of qtyByProduct.entries()) {
+        const product = await tx.products.findUnique({ where: { id: productId } });
         if (!product) continue;
+        const stockBefore = Number(product.current_stock);
 
-        const stockBefore = product.current_stock;
-        const stockAfter = stockBefore + detail.quantity;
-
-        await tx.products.update({
-          where: { id: detail.product_id },
-          data: { current_stock: stockAfter },
-        });
+        await syncProductSnapshotFromBatches(tx, productId);
+        const refreshed = await tx.products.findUnique({ where: { id: productId } });
+        const stockAfter = Number(refreshed?.current_stock ?? stockBefore + qty);
 
         await tx.inventory_movements.create({
           data: {
-            product_id: detail.product_id,
+            product_id: productId,
             user_id: req.user!.id,
             type: 'ajuste',
-            quantity: detail.quantity,
+            quantity: qty,
             stock_before: stockBefore,
             stock_after: stockAfter,
             reason: `Anulación venta #${sale.id}: ${reason || 'sin motivo'}`,

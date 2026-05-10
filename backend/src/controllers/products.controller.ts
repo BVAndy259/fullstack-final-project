@@ -5,10 +5,17 @@ import prisma from '../config/prisma';
 export const listProducts = async (req: Request, res: Response): Promise<void> => {
   try {
     const { search, category_id, active } = req.query;
+    const activeValue = typeof active === 'string' ? active.toLowerCase() : undefined;
+    const activeWhere =
+      activeValue === 'all'
+        ? undefined
+        : activeValue !== undefined
+          ? activeValue === 'true'
+          : true;
 
     const products = await prisma.products.findMany({
       where: {
-        active: active !== undefined ? active === 'true' : true,
+        ...(activeWhere !== undefined && { active: activeWhere }),
         ...(category_id && { category_id: Number(category_id) }),
         ...(search && {
           name: { contains: String(search), mode: 'insensitive' },
@@ -76,14 +83,19 @@ export const createProduct = async (req: Request, res: Response): Promise<void> 
       unit_of_measure, expiry_date, barcode,
     } = req.body;
 
+    if (!name || !category_id) {
+      res.status(400).json({ message: 'Nombre y categoría son obligatorios.' });
+      return;
+    }
+
     const product = await prisma.products.create({
       data: {
         name,
-        description,
+        description: description || null,
         category_id: Number(category_id),
-        purchase_price: Number(purchase_price),
-        sale_price: Number(sale_price),
-        current_stock: Number(current_stock) || 0,
+        purchase_price: purchase_price !== undefined && purchase_price !== '' ? Number(purchase_price) : 0,
+        sale_price: sale_price !== undefined && sale_price !== '' ? Number(sale_price) : 0,
+        current_stock: current_stock !== undefined && current_stock !== '' ? Number(current_stock) : 0,
         min_stock: Number(min_stock) || 10,
         unit_of_measure: unit_of_measure || 'unidad',
         expiry_date: expiry_date ? new Date(expiry_date) : null,
