@@ -64,12 +64,32 @@ model products {
   created_at          DateTime              @default(now()) @db.Timestamp(6)
   updated_at          DateTime              @default(now()) @db.Timestamp(6)
   inventory_movements inventory_movements[]
+  product_batches     product_batches[]
   categories          categories            @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sale_batch_items    sale_batch_items[]
   sale_details        sale_details[]
 
   @@index([category_id], map: "idx_products_category")
   @@index([current_stock, min_stock], map: "idx_products_low_stock")
   @@index([name], map: "idx_products_name")
+}
+
+model product_batches {
+  id                 Int                @id @default(autoincrement())
+  product_id         Int
+  lot_code           String?            @db.VarChar(80)
+  purchase_price     Decimal            @db.Decimal(10, 2)
+  sale_price         Decimal            @db.Decimal(10, 2)
+  expiry_date        DateTime           @db.Date
+  quantity_initial   Int
+  quantity_available Int
+  received_at        DateTime           @default(now()) @db.Timestamp(6)
+  active             Boolean            @default(true)
+  products           products           @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sale_batch_items   sale_batch_items[]
+
+  @@index([product_id], map: "idx_batches_product")
+  @@index([expiry_date], map: "idx_batches_expiry")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -98,6 +118,7 @@ model sales {
   observation         String?
   created_at          DateTime              @default(now()) @db.Timestamp(6)
   inventory_movements inventory_movements[]
+  sale_batch_items    sale_batch_items[]
   sale_details        sale_details[]
   customers           customers             @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   users               users                 @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -105,6 +126,24 @@ model sales {
   @@index([customer_id], map: "idx_sales_customer")
   @@index([sale_date], map: "idx_sales_date")
   @@index([user_id], map: "idx_sales_user")
+}
+
+model sale_batch_items {
+  id            Int             @id @default(autoincrement())
+  sale_id       Int
+  product_id    Int
+  batch_id      Int
+  quantity      Int
+  unit_price    Decimal         @db.Decimal(10, 2)
+  subtotal      Decimal         @db.Decimal(10, 2)
+  created_at    DateTime        @default(now()) @db.Timestamp(6)
+  product_batch product_batches @relation(fields: [batch_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  products      products        @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sales         sales           @relation(fields: [sale_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([sale_id], map: "idx_sale_batch_sale")
+  @@index([batch_id], map: "idx_sale_batch_batch")
+  @@index([product_id], map: "idx_sale_batch_product")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

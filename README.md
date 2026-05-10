@@ -57,12 +57,20 @@ JWT_SECRET=PEGA_AQUI_EL_SECRET_GENERADO
 ### 3.3 Base de datos
 
 1. Crea la base de datos en PostgreSQL (ejemplo: `nova_salud`).
-2. Aplica el esquema:
+2. Inicializa todo (crea tablas en DB vacia + genera Prisma Client + seed admin):
 
 ```bash
-npx prisma generate
-npx prisma db push
+npm run db:init
 ```
+
+No uses `npx prisma db pull` en una DB vacia (ese comando es para introspeccion de una DB que ya tiene tablas).
+
+El seed crea un admin fijo solo si no existe ningun usuario con rol `admin`:
+- Nombre: `Admin`
+- Email: `admin@novasalud.com`
+- Password: `admin123`
+- Rol: `admin`
+- Activo: `true`
 
 Opcional:
 
@@ -70,7 +78,7 @@ Opcional:
 npx prisma studio
 ```
 
-Tambien puedes usar el script SQL de `data_modeling/script.sql`.
+No necesitas usar `data_modeling/script.sql` para el arranque normal.
 
 ### 3.4 Ejecutar backend
 

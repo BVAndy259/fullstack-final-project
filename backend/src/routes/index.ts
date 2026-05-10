@@ -8,7 +8,7 @@ import {
   listProducts, getProduct, createProduct,
   updateProduct, deleteProduct, stockAlerts,
 } from '../controllers/products.controller';
-import { listCategories } from '../controllers/categories.controller';
+import { listCategories, createCategory } from '../controllers/categories.controller';
 import {
   registerSale, listSales,
   getSale, cancelSale,
@@ -19,7 +19,7 @@ import {
   createCustomer, updateCustomer,
 } from '../controllers/customers.controller';
 import {
-  createEntry, createAdjustment, getMovements,
+  createEntry, createAdjustment, getMovements, getBatches,
 } from '../controllers/inventory.controller';
 import {
   getUsers, getUser, createUser,
@@ -34,6 +34,7 @@ router.get('/auth/me', validateToken, me);
 
 // Categories
 router.get('/categories', validateToken, listCategories);
+router.post('/categories', validateToken, soloRoles('admin'), createCategory);
 
 // Products
 router.get('/products/low-stock', validateToken, stockAlerts);
@@ -59,6 +60,7 @@ router.put('/customers/:id', validateToken, updateCustomer);
 router.post('/inventory/entry', validateToken, soloRoles('admin'), createEntry);
 router.post('/inventory/adjustment', validateToken, soloRoles('admin'), createAdjustment);
 router.get('/inventory/movements', validateToken, getMovements);
+router.get('/inventory/batches', validateToken, getBatches);
 
 // Users
 router.get('/users', validateToken, soloRoles('admin'), getUsers);
